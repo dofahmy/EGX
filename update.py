@@ -1,14 +1,18 @@
 """
 بيحدّث الأسعار ويعمل الصفحة من جديد.
-- لو مفيش prices.csv: بيبدأ من prices_seed.csv.gz (أسعار متخزنة في المشروع)، فالصفحة بتشتغل حتى لو ياهو قافل.
-- بعدين بينزّل آخر ١٠ أيام من ياهو على دفعات صغيرة ويضيفها، فلو نجح جزء بس بيتحفظ.
+المصدر الأساسي: تريدنج فيو. لو فشل: ياهو. ولو الاتنين فشلوا: الأسعار المتخزنة (prices_seed.csv.gz).
+- أول تشغيل للسيرفر: بيحاول ينزّل ٥ سنين كاملين من تريدنج فيو علشان كل الأسعار تبقى من مصدر واحد.
+- بعد كده: آخر ١٥ جلسة بس، وبيضيفهم.
 """
 import os
 import time
 
 import pandas as pd
 
-status = {"error": None, "last_price_date": None, "tickers_updated": 0}
+import tv_prices
+
+status = {"error": None, "last_price_date": None, "tickers_updated": 0, "source": None, "full_tv": False}
+COLS = tv_prices.COLS
 
 
 def base_prices():
@@ -16,27 +20,21 @@ def base_prices():
         return pd.read_csv("prices.csv")
     if os.path.exists("prices_seed.csv.gz"):
         return pd.read_csv("prices_seed.csv.gz")
-    return pd.DataFrame(columns=["date", "ticker", "open", "high", "low", "close", "volume"])
+    return pd.DataFrame(columns=COLS)
 
 
-def fetch_recent(tickers, period="10d", chunk=25):
+def yahoo_recent(tickers, period="10d", chunk=25):
     import yfinance as yf
-    frames, errors = [], []
+    frames = []
     for k in range(0, len(tickers), chunk):
         part = tickers[k:k + chunk]
-        data = None
-        for attempt in range(2):
-            try:
-                data = yf.download([f"{t}.CA" for t in part], period=period, interval="1d", group_by="ticker",
-                                   auto_adjust=True, threads=False, progress=False)
-                if data is not None and not data.empty:
-                    break
-            except Exception as e:
-                errors.append(str(e)[:200])
-            time.sleep(5)
+        try:
+            data = yf.download([f"{t}.CA" for t in part], period=period, interval="1d", group_by="ticker",
+                               auto_adjust=True, threads=False, progress=False)
+        except Exception:
+            data = None
         if data is None or data.empty:
             if k == 0:
-                errors.append("أول دفعة رجعت فاضية، فوقفت المحاولة (ياهو غالبًا مانع السيرفر).")
                 break
             continue
         for t in part:
@@ -48,36 +46,60 @@ def fetch_recent(tickers, period="10d", chunk=25):
                 continue
             d = d.reset_index().rename(columns=str.lower)
             d["ticker"] = t
-            frames.append(d[["date", "ticker", "open", "high", "low", "close", "volume"]])
-        time.sleep(3)
-    return frames, errors
+            d["date"] = pd.to_datetime(d["date"]).dt.strftime("%Y-%m-%d")
+            frames.append(d[COLS])
+        time.sleep(2)
+    return pd.concat(frames) if frames else pd.DataFrame(columns=COLS)
 
 
 def run():
     status["error"] = None
     p = base_prices()
     tickers = pd.read_csv("egx_sectors.csv", encoding="utf-8-sig")["ticker"].tolist()
+    new, src = pd.DataFrame(columns=COLS), None
+
+    # ١. تريدنج فيو
     try:
-        frames, errors = fetch_recent(tickers)
-        status["tickers_updated"] = len({f["ticker"].iat[0] for f in frames})
-        if frames:
-            new = pd.concat(frames)
-            new["date"] = pd.to_datetime(new["date"]).dt.strftime("%Y-%m-%d")
-            p["date"] = p["date"].astype(str).str[:10]
-            p = pd.concat([p, new]).drop_duplicates(["date", "ticker"], keep="last").sort_values(["ticker", "date"])
-        if status["tickers_updated"] < 50:
-            status["error"] = (f"ياهو رجّع أسعار {status['tickers_updated']} سهم بس. "
-                               + (errors[-1] if errors else "غالبًا ياهو مانع طلبات السيرفر."))
+        bars = 15 if status["full_tv"] else 2000
+        print(f"[تحديث] تريدنج فيو: {bars} جلسة لـ {len(tickers)} سهم", flush=True)
+        new, failed = tv_prices.fetch(tickers, bars=bars, log=lambda m: print(m, flush=True))
+        if new["ticker"].nunique() >= 150:
+            src = "تريدنج فيو"
+            new, shift = tv_prices.align(new, p)  # بيقارن بالأسعار القديمة ويصلّح أي فرق يوم في التواريخ
+            if shift:
+                print(f"[تحديث] اتصلّح فرق {shift} يوم في تواريخ تريدنج فيو", flush=True)
+            if bars > 15:
+                status["full_tv"] = True
+                keep = p[~p["ticker"].isin(new["ticker"].unique())]  # الأسهم اللي تريدنج فيو ماجابهاش تفضل من المتخزن
+                p = keep
+        else:
+            status["error"] = f"تريدنج فيو رجّع {new['ticker'].nunique()} سهم بس"
+            new = pd.DataFrame(columns=COLS)
     except Exception as e:
-        status["error"] = f"فشل تنزيل الأسعار: {str(e)[:300]}"
+        status["error"] = f"تريدنج فيو فشل: {str(e)[:200]}"
+
+    # ٢. ياهو كبديل
+    if src is None:
+        try:
+            new = yahoo_recent(tickers)
+            if new["ticker"].nunique() >= 50:
+                src = "ياهو"
+            else:
+                status["error"] = (status["error"] or "") + " — وياهو كمان فشل"
+        except Exception as e:
+            status["error"] = (status["error"] or "") + f" — وياهو فشل: {str(e)[:150]}"
+
+    if src:
+        p = tv_prices.merge(p, new)
+    status["source"] = src or "الأسعار المتخزنة"
+    status["tickers_updated"] = int(new["ticker"].nunique()) if src else 0
     if p.empty:
-        status["error"] = (status["error"] or "") + " — ومفيش أسعار متخزنة."
-        print("[تحديث]", status["error"], flush=True)
+        print("[تحديث] مفيش أسعار خالص", status["error"], flush=True)
         return False
     p.to_csv("prices.tmp.csv", index=False)
     os.replace("prices.tmp.csv", "prices.csv")
     status["last_price_date"] = str(p["date"].max())[:10]
-    print(f"[تحديث] أسعار لحد {status['last_price_date']} — اتحدّث {status['tickers_updated']} سهم"
+    print(f"[تحديث] المصدر: {status['source']} — أسعار لحد {status['last_price_date']} — {status['tickers_updated']} سهم"
           + (f" — تنبيه: {status['error']}" if status["error"] else ""), flush=True)
     import egx_web
     egx_web.main()

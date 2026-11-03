@@ -67,7 +67,7 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/health"):
             u = update.status
-            body = (f"ok last={state['last']} running={state['running']} prices_until={u['last_price_date']} "
+            body = (f"ok last={state['last']} running={state['running']} prices_until={u['last_price_date']} source={u['source']} "
                     f"tickers_updated={u['tickers_updated']} error={u['error']}").encode("utf-8")
             self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers(); self.wfile.write(body); return
         if not self._auth():

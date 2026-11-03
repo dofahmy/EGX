@@ -66,15 +66,21 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/health"):
-            body = f"ok last={state['last']} running={state['running']}".encode()
-            self.send_response(200); self.send_header("Content-Type", "text/plain"); self.end_headers(); self.wfile.write(body); return
+            u = update.status
+            body = (f"ok last={state['last']} running={state['running']} prices_until={u['last_price_date']} "
+                    f"tickers_updated={u['tickers_updated']} error={u['error']}").encode("utf-8")
+            self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers(); self.wfile.write(body); return
         if not self._auth():
             return
         if self.path.startswith("/refresh"):
             threading.Thread(target=refresh, daemon=True).start()
             self.send_response(302); self.send_header("Location", "/"); self.end_headers(); return
         page = "egx_sectors.html"
-        body = open(page, "rb").read() if os.path.exists(page) else WAIT.encode()
+        if os.path.exists(page):
+            body = open(page, "rb").read()
+        else:
+            err = update.status["error"]
+            body = WAIT.replace("</body>", (f'<p style="color:#b4372f">آخر محاولة: {err}</p>' if err else "") + "</body>").encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")

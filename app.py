@@ -17,9 +17,11 @@ try:
 except Exception:
     gold_web = None
 import update
+import egx_web_1h
 
 CAIRO = ZoneInfo("Africa/Cairo")
 HOURS = {9, 16, 20}
+HOURS_1H = {11, 12, 13, 14, 15, 21}  # بعد ما شموع الساعة تقفل (التداول من ١٠ لـ ٢:٣٠)
 PASSWORD = os.environ.get("APP_PASSWORD", "")
 state = {"last": None, "running": False}
 hourly = {"proc": None}
@@ -59,6 +61,13 @@ def refresh():
         state["running"] = False
 
 
+def refresh_1h():
+    try:
+        egx_web_1h.run(lambda m: print(m, flush=True))
+    except Exception as e:
+        print("[ساعة] فشل:", e, flush=True)
+
+
 def scheduler():
     done = set()
     while True:
@@ -67,7 +76,11 @@ def scheduler():
         if now.hour in HOURS and key not in done:
             done.add(key)
             refresh()
-        time.sleep(60)
+        k1 = ("1h", now.date(), now.hour)
+        if now.hour in HOURS_1H and now.minute >= 2 and now.weekday() in (6, 0, 1, 2, 3) and k1 not in done:
+            done.add(k1)
+            threading.Thread(target=refresh_1h, daemon=True).start()
+        time.sleep(30)
 
 
 class H(BaseHTTPRequestHandler):
@@ -91,6 +104,7 @@ class H(BaseHTTPRequestHandler):
             u = update.status
             body = (f"ok last={state['last']} running={state['running']} prices_until={u['last_price_date']} source={u['source']} "
                     f"tickers_updated={u['tickers_updated']} error={u['error']}"
+                    + f"\n1h: running={egx_web_1h.status['running']} last_bar={egx_web_1h.status['last_bar']} built={egx_web_1h.status['built']} error={egx_web_1h.status['error']}"
                     + (f"\ngold_until={gold_web.status['gold_until']} local_until={gold_web.status['local_until']} "
                        f"local_added={gold_web.status['local_added']} gold_error={gold_web.status['error']}" if gold_web else "")).encode("utf-8")
             self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers(); self.wfile.write(body); return
@@ -99,6 +113,18 @@ class H(BaseHTTPRequestHandler):
         if self.path.split("?")[0] == "/refresh":
             threading.Thread(target=refresh, daemon=True).start()
             self.send_response(302); self.send_header("Location", "/"); self.end_headers(); return
+        if self.path.startswith("/refresh-1h"):
+            threading.Thread(target=refresh_1h, daemon=True).start()
+            self.send_response(302); self.send_header("Location", "/1h"); self.end_headers(); return
+        if self.path.split("?")[0] == "/1h":
+            page = "egx_sectors_1h.html"
+            if os.path.exists(page):
+                body = open(page, "rb").read()
+            else:
+                st = egx_web_1h.status
+                body = WAIT.replace("</body>", "<p>أول مرة بينزّل شموع الساعة لكل الأسهم، وده بياخد حوالي ٤٥ دقيقة.</p>"
+                                    + (f'<p style="color:#b4372f">{st["error"]}</p>' if st["error"] else "") + "</body>").encode()
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Cache-Control", "no-cache"); self.end_headers(); self.wfile.write(body); return
         if self.path.startswith("/hourly-run"):
             run_hourly(offline="offline" in self.path and os.path.exists("prices_1h.csv"))
             self.send_response(302); self.send_header("Location", "/hourly"); self.end_headers(); return
@@ -136,6 +162,7 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=refresh, daemon=True).start()
+    threading.Thread(target=refresh_1h, daemon=True).start()
     threading.Thread(target=scheduler, daemon=True).start()
     port = int(os.environ.get("PORT", 8000))
     print(f"شغال على البورت {port}", flush=True)

@@ -148,7 +148,9 @@ def evaluate(Cf, mkt, sigs, bpd, cost, H=(1, 5, 20)):
     cm = (1 + mkt.fillna(0)).cumprod()
     out = sigs.copy()
     n = len(Cf)
-    e = (out["j"] + 1).clip(upper=n - 1).values  # الدخول على إغلاق الشمعة اللي بعد الإشارة
+    # الدخول على إغلاق الشمعة اللي بعد ما الإشارتين يبقوا معروفين: إشارة السهم وإشارة القطاع.
+    # (السهم اللي كسر قبل القطاع مانعرفش إنه جزء من موجة غير يوم إشارة القطاع)
+    e = (np.maximum(out["j"].values, out["wave_i"].values) + 1).clip(max=n - 1)
     tick = out["ticker"].values
     px = Cf.values
     col = {t: k for k, t in enumerate(Cf.columns)}
@@ -206,6 +208,10 @@ def main():
     ph = pd.read_csv("prices_1h.csv") if a.offline else fetch(sectors["ticker"].tolist(), bars=a.bars)
     Ch, S = wide(ph, "dt", sectors)
     bpd = int(round(Ch.groupby(Ch.index.date).size().median()))
+    # الفترة المشتركة: من أول يوم نص الأسهم أو أكتر عندها شموع ساعة
+    have = Ch.notna().cumsum().gt(0).sum(axis=1)
+    t0 = have[have >= 0.5 * Ch.shape[1]].index[0].normalize()
+    Ch = Ch.loc[t0:]
     pdly = pd.read_csv("prices.csv")
     Cd, Sd = wide(pdly, "date", sectors)
     Cd = Cd.loc[Ch.index[0].normalize():]

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>موجات قطاعات البورصة المصرية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* لوحة شاشة تداول هادية: خلفية ورقية مائلة للأزرق، وحبر كحلي، ولون مميز نحاسي للإشارات */
+  --bg:#f4f6f8; --panel:#ffffff; --ink:#14213a; --muted:#5b6880; --line:#dde3ec;
+  --accent:#1d5c8f; --accent-soft:#e3eef8;
+  --up:#137a4b; --up-bg:#e1f3ea; --down:#b4372f; --down-bg:#fbe6e4;
+  --st-first:#f6e3a8; --st-early:#f8d6bd; --st-after:#d6eedc; --st-wait:#e9ecf1;
+  --font-display:"Reem Kufi","IBM Plex Sans Arabic",Tahoma,sans-serif;
+  --font-body:"IBM Plex Sans Arabic",Tahoma,"Segoe UI",sans-serif;
+  color-scheme:light;
+  /* التخطيط: شريط تحكم ثابت فوق، بعده ملخص السوق، بعده الجداول بالترتيب من الأهم للتفاصيل */
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1622; --panel:#172131; --ink:#e7edf6; --muted:#9aa8bd; --line:#2a3850;
+    --accent:#6fb0e6; --accent-soft:#1d3349;
+    --up:#5fd39b; --up-bg:#163628; --down:#ff8a7f; --down-bg:#3d1d1c;
+    --st-first:#4a3f17; --st-early:#4a2f1d; --st-after:#1e3d29; --st-wait:#243045;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1622; --panel:#172131; --ink:#e7edf6; --muted:#9aa8bd; --line:#2a3850;
+  --accent:#6fb0e6; --accent-soft:#1d3349;
+  --up:#5fd39b; --up-bg:#163628; --down:#ff8a7f; --down-bg:#3d1d1c;
+  --st-first:#4a3f17; --st-early:#4a2f1d; --st-after:#1e3d29; --st-wait:#243045;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.6}
+header{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.wrap{max-width:1280px;margin:0 auto;padding:0 20px}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px 24px;padding:14px 0}
+h1{font-family:var(--font-display);font-size:24px;margin:0;text-wrap:balance;flex:1 1 260px}
+h1 small{display:block;font-family:var(--font-body);font-size:13px;font-weight:400;color:var(--muted)}
+.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.controls label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:4px}
+input,select,button{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+button{cursor:pointer;background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+button.ghost{background:transparent;color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{padding:20px 0 60px;display:flex;flex-direction:column;gap:24px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+h2{font-family:var(--font-display);font-size:19px;margin:0 0 4px;text-wrap:balance}
+.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.tile{border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.tile .k{font-size:12px;color:var(--muted)}
+.tile .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:14px}
+th{font-size:12px;font-weight:600;color:var(--muted);text-align:right;padding:8px 10px;border-bottom:2px solid var(--line);white-space:nowrap;background:var(--panel)}
+td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n{white-space:nowrap}
+.up{color:var(--up)} .down{color:var(--down)}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.p-active{background:var(--accent-soft);color:var(--accent)}
+.p-done{background:var(--st-wait);color:var(--muted)}
+.p-yes{background:var(--up-bg);color:var(--up)} .p-no{background:var(--down-bg);color:var(--down)}
+.st-first td:nth-child(1),.st-first td:nth-child(2){background:var(--st-first)}
+.st-early td:nth-child(1),.st-early td:nth-child(2){background:var(--st-early)}
+.st-after td:nth-child(1),.st-after td:nth-child(2){background:var(--st-after)}
+.st-wait td:nth-child(1),.st-wait td:nth-child(2){background:var(--st-wait)}
+.wave{border:1px solid var(--line);border-radius:8px;margin-top:14px;overflow:hidden}
+.wave-h{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:10px 14px;background:var(--accent-soft)}
+.wave-h b{font-family:var(--font-display);font-size:17px}
+.wave-h span{font-size:13px;color:var(--muted)}
+.wave-h .bar{margin-inline-start:auto}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-inline-end:4px}
+.names{font-size:13px;line-height:1.7;min-width:190px}
+.warn{color:var(--down);font-weight:700}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+.note{font-size:13px;color:var(--muted);max-width:75ch}
+.chk{font-weight:700}
+@media (max-width:600px){h1{font-size:20px}.tile .v{font-size:20px}section{padding:14px}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<header><div class="wrap top">
+  <h1>موجات قطاعات البورصة المصرية<small id="asof"></small></h1>
+  <form class="controls" id="f">
+    <label for="start">من<input type="date" id="start"></label>
+    <label for="end">لحد<input type="date" id="end"></label>
+    <label for="mode">العرض<select id="mode"><option value="last">آخر موجة لكل قطاع</option><option value="all">كل الموجات</option></select></label>
+    <label for="sector">القطاع<select id="sector"><option value="">كل القطاعات</option></select></label>
+    <label for="recent">إشارات آخر<select id="recent"><option>3</option><option selected>5</option><option>10</option><option>20</option></select></label>
+    <button type="submit" id="go">اعرض</button>
+    <button type="button" class="ghost" id="today">النهارده</button>
+  </form>
+</div></header>
+
+<div class="wrap"><main>
+  <section>
+    <h2>السوق في آخر يوم في الفترة</h2>
+    <p class="sub" id="mk-sub"></p>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section>
+    <h2>إشارات شرا حديثة</h2>
+    <p class="sub" id="rec-sub"></p>
+    <div class="scroll" id="recent-t"></div>
+  </section>
+
+  <section>
+    <h2>ملخص القطاعات</h2>
+    <p class="sub">آخر إشارة قطاع جوه الفترة (أو كل الإشارات لو اخترتي كل الموجات). الإشارة نشطة لمدة ٤٠ جلسة.</p>
+    <div class="scroll" id="sum-t"></div>
+  </section>
+
+  <section>
+    <h2>تفاصيل كل موجة</h2>
+    <p class="sub">الأسهم بالترتيب اللي اتحركت بيه. العائد من سعر يوم إشارة السهم لحد آخر يوم في الفترة، واللي لسه ماكسرش محسوب من يوم إشارة القطاع.</p>
+    <div class="legend"><span><i style="background:var(--st-first)"></i>أول سهم</span><span><i style="background:var(--st-early)"></i>بدري قبل إشارة القطاع</span><span><i style="background:var(--st-after)"></i>لحق بعد الإشارة</span><span><i style="background:var(--st-wait)"></i>لسه ماكسرش</span><span class="warn">⚠</span><span>حركة أكبر من ٥٠٪: راجعيها، غالبًا زيادة رأس مال ماتعدّلتش</span></div>
+    <div id="waves"></div>
+  </section>
+
+  <section>
+    <h2>القطاعات وشروط الإشارة</h2>
+    <p class="sub">حالة كل قطاع في آخر يوم في الفترة. القطاع بيدّي إشارة لما الشروط التلاتة تتحقق.</p>
+    <div class="scroll" id="cond-t"></div>
+  </section>
+
+  <section>
+    <h2>القواعد</h2>
+    <p class="note"><b>إشارة القطاع:</b> متوسط أسهم القطاع سبق متوسط السوق بـ٤٪ أو أكتر في آخر ١٠ جلسات، وربع أسهمه على الأقل (وسهمين على الأقل) عملوا أعلى إغلاق في ٦٠ جلسة خلال الـ١٠ جلسات دول، وأداؤه فوق السوق في الـ٦٣ جلسة اللي قبلهم أقل من ٥٪. ومفيش إشارة جديدة لنفس القطاع قبل ٦٣ جلسة.</p>
+    <p class="note"><b>إشارة السهم:</b> أول إغلاق فوق أعلى إغلاق في الـ٦٠ جلسة اللي قبله، من ١٠ جلسات قبل إشارة القطاع لحد ٤٠ جلسة بعدها. <b>فوق السوق</b> = عائد السهم ناقص متوسط عائد كل الأسهم بأوزان متساوية في نفس المدة.</p>
+    <p class="note">الأسعار من ياهو فايننس ومعدّلة، وممكن تختلف عن سعر الشاشة يومها. المصرف العربي الدولي والبنك المصري الخليجي بالدولار. ده سجل وصفي ومش توصية: الاختبار التاريخي من ٢٠١٩ ماطلّعش ميزة ثابتة للقاعدة دي بعد التكلفة والسيولة.</p>
+  </section>
+</main></div>
+
+<script>
+const D=/*__DATA__*/null;
+const W=D.window, dates=D.dates, N=dates.length;
+const AR=s=>String(s).replace(/[0-9]/g,d=>"٠١٢٣٤٥٦٧٨٩"[d]);
+const pct=(x,d=1)=>x==null||isNaN(x)?"—":AR((x>0?"+":"")+(x*100).toFixed(d))+"٪";
+const cls=x=>x==null||isNaN(x)?"":(x>0?"up":(x<0?"down":""));
+const price=x=>x==null?"—":AR(x>=100?x.toFixed(2):x>=1?x.toFixed(2):x.toFixed(3));
+const MON=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+const fmt=s=>{const [y,m,d]=s.split("-");return AR(+d)+" "+MON[+m-1]+" "+AR(y)};
+const dt=i=>fmt(dates[i]);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const nm=t=>esc(D.names[t]||t);
+const idxOf=d=>{let lo=0,hi=N-1,r=-1;while(lo<=hi){const m=(lo+hi)>>1;if(dates[m]<=d){r=m;lo=m+1}else hi=m-1}return r};
+function ma50(t,L){const c=D.close[t];let s=0,k=0;for(let i=Math.max(0,L-49);i<=L;i++){if(c[i]!=null){s+=c[i];k++}}return k>=40?s/k:null}
+const mret=(a,b)=>D.mkt[b]/D.mkt[a]-1;
+
+const secSel=document.getElementById("sector");
+Object.keys(D.sectors).sort((a,b)=>a.localeCompare(b,"ar")).forEach(s=>{const o=document.createElement("option");o.value=s;o.textContent=s;secSel.appendChild(o)});
+const $=id=>document.getElementById(id);
+$("start").min=$("end").min=dates[0];$("start").max=$("end").max=dates[N-1];
+function setToday(){ $("end").value=dates[N-1]; const d=new Date(dates[N-1]);d.setFullYear(d.getFullYear()-1);$("start").value=d.toISOString().slice(0,10) }
+setToday();
+$("asof").textContent="آخر يوم في البيانات: "+fmt(dates[N-1])+" — "+AR(D.waves.length)+" موجة من "+AR(dates[0].slice(0,4));
+
+function waveRows(w,L){
+  const lim=Math.min(w.i+W,L), rows=[], moved=new Set();
+  const st=w.st.filter(([t,j])=>j<=lim);
+  const firstJ=st.length?st[0][1]:null;
+  for(const [t,j] of st){
+    moved.add(t);
+    const p0=D.close[t][j], p1=D.close[t][L];
+    const r=(p0&&p1!=null)?p1/p0-1:null;
+    rows.push({t,j,stage:j===firstJ?"first":(j<=w.i?"early":"after"),p0,p1,r,ex:r==null?null:r-mret(j,L),m50:ma50(t,L)});
+  }
+  for(const t of D.sectors[w.s]){
+    if(moved.has(t)||D.close[t][L]==null)continue;
+    const p0=D.close[t][w.i], p1=D.close[t][L];
+    const r=(p0&&p1!=null)?p1/p0-1:null;
+    rows.push({t,j:null,stage:"wait",p0,p1,r,ex:r==null?null:r-mret(w.i,L),m50:ma50(t,L)});
+  }
+  return rows;
+}
+const STG={first:"أول سهم",early:"بدري",after:"لحق بعد الإشارة",wait:"لسه ماكسرش"};
+const flag=r=>(r.r!=null&&Math.abs(r.r)>0.5)?' <span class="warn" title="حركة كبيرة جدًا: راجعي السعر">⚠</span>':"";
+const yn=r=>r.m50==null||r.p1==null?"—":(r.p1>r.m50?'<span class="pill p-yes">فوقه</span>':'<span class="pill p-no">تحته</span>');
+
+function render(){
+  const endI=idxOf($("end").value||dates[N-1]); const L=endI<0?N-1:endI;
+  const sI=Math.max(0,idxOf($("start").value||dates[0]));
+  const mode=$("mode").value, fs=secSel.value, rec=+$("recent").value;
+  // السوق
+  const live=Object.keys(D.close).filter(t=>D.close[t][L]!=null);
+  const above=live.filter(t=>{const m=ma50(t,L);return m!=null&&D.close[t][L]>m}).length;
+  const tiles=[["آخر أسبوع",L>=5?mret(L-5,L):null],["آخر شهر",L>=21?mret(L-21,L):null],["آخر ٣ شهور",L>=63?mret(L-63,L):null],["فوق متوسط ٥٠ يوم",live.length?above/live.length:null,true]];
+  $("tiles").innerHTML=tiles.map(([k,v,raw])=>`<div class="tile"><div class="k">${k}</div><div class="v ${raw?"":cls(v)}">${raw?AR(Math.round(v*100))+"٪":pct(v)}</div></div>`).join("");
+  $("mk-sub").textContent="آخر يوم: "+fmt(dates[L])+" — متوسط حركة كل الأسهم بأوزان متساوية.";
+  // الموجات في الفترة
+  let ws=D.waves.filter(w=>w.i>=sI&&w.i<=L&&(!fs||w.s===fs));
+  if(mode==="last"){const m={};ws.forEach(w=>m[w.s]=w);ws=Object.values(m)}
+  ws.sort((a,b)=>b.i-a.i);
+  const R=ws.map(w=>({w,rows:waveRows(w,L),since:L-w.i,active:L-w.i<=W,sx:D.sxc[w.s][L]-D.sxc[w.s][w.i]}));
+  // إشارات حديثة
+  const recent=[];R.filter(x=>x.active).forEach(x=>x.rows.filter(r=>r.j!=null&&L-r.j<rec).forEach(r=>recent.push({x,r})));
+  recent.sort((a,b)=>b.r.j-a.r.j);
+  $("rec-sub").textContent=`أسهم ادّت إشارة في آخر ${AR(rec)} جلسات جوه قطاع إشارته نشطة.`;
+  $("recent-t").innerHTML=recent.length?`<table><thead><tr><th>السهم</th><th>القطاع</th><th>المرحلة</th><th>تاريخ إشارة السهم</th><th>من كام جلسة</th><th>السعر يومها</th><th>السعر دلوقتي</th><th>العائد</th><th>فوق السوق</th><th>متوسط ٥٠</th></tr></thead><tbody>`+
+    recent.map(({x,r})=>`<tr class="st-${r.stage}"><td>${nm(r.t)}</td><td>${esc(x.w.s)}</td><td>${STG[r.stage]}</td><td class="n">${dt(r.j)}</td><td class="n">${AR(L-r.j)}</td><td class="n">${price(r.p0)}</td><td class="n">${price(r.p1)}</td><td class="n ${cls(r.r)}">${pct(r.r)}${flag(r)}</td><td class="n ${cls(r.ex)}">${pct(r.ex)}</td><td>${yn(r)}</td></tr>`).join("")+"</tbody></table>"
+    :`<p class="empty">مفيش أسهم ادّت إشارة في آخر ${AR(rec)} جلسات جوه قطاعات نشطة.</p>`;
+  // الملخص
+  const list=(rows,st)=>rows.filter(r=>r.stage===st).map(r=>nm(r.t)+(r.j!=null?` <span style="color:var(--muted);white-space:nowrap">(${dt(r.j)})</span>`:"")).join("، ")||"—";
+  $("sum-t").innerHTML=R.length?`<table><thead><tr><th>القطاع</th><th>إشارة القطاع</th><th>من كام جلسة</th><th>الحالة</th><th>فوق السوق من الإشارة</th><th>أسهم القطاع</th><th>أول سهم</th><th>بدري</th><th>لحقوا</th><th>لسه</th></tr></thead><tbody>`+
+    R.map(x=>`<tr><td><b>${esc(x.w.s)}</b></td><td class="n">${dt(x.w.i)}</td><td class="n">${AR(x.since)}</td><td>${x.active?'<span class="pill p-active">نشطة</span>':'<span class="pill p-done">خلصت</span>'}</td><td class="n ${cls(x.sx)}">${pct(x.sx)}</td><td class="n">${AR(D.sectors[x.w.s].length)}</td><td class="names">${list(x.rows,"first")}</td><td class="names">${list(x.rows,"early")}</td><td class="names">${list(x.rows,"after")}</td><td class="names">${list(x.rows,"wait")}</td></tr>`).join("")+"</tbody></table>"
+    :'<p class="empty">مفيش إشارات قطاع في الفترة دي.</p>';
+  // تفاصيل
+  $("waves").innerHTML=R.map(x=>{
+    const c={first:0,early:0,after:0,wait:0};x.rows.forEach(r=>c[r.stage]++);
+    return `<div class="wave"><div class="wave-h"><b>${esc(x.w.s)}</b><span>إشارة القطاع: <b style="font-family:var(--font-body);font-size:14px">${dt(x.w.i)}</b></span><span>من ${AR(x.since)} جلسة</span>${x.active?'<span class="pill p-active">نشطة</span>':'<span class="pill p-done">خلصت</span>'}<span>فوق السوق من الإشارة: <b class="${cls(x.sx)}" style="font-family:var(--font-body);font-size:14px">${pct(x.sx)}</b></span><span class="bar">${AR(D.sectors[x.w.s].length)} سهم: اتحرك ${AR(c.first+c.early+c.after)}، لسه ${AR(c.wait)}</span></div>
+    <div class="scroll"><table><thead><tr><th>المرحلة</th><th>السهم</th><th>تاريخ إشارة السهم</th><th>جلسات من إشارة القطاع</th><th>السعر يوم الإشارة</th><th>السعر في آخر الفترة</th><th>العائد</th><th>فوق السوق</th><th>متوسط ٥٠</th></tr></thead><tbody>`+
+    x.rows.map(r=>`<tr class="st-${r.stage}"><td>${STG[r.stage]}</td><td>${nm(r.t)}</td><td class="n">${r.j!=null?dt(r.j):"—"}</td><td class="n">${r.j!=null?AR(r.j-x.w.i):"—"}</td><td class="n">${price(r.p0)}</td><td class="n">${price(r.p1)}</td><td class="n ${cls(r.r)}">${pct(r.r)}${flag(r)}</td><td class="n ${cls(r.ex)}">${pct(r.ex)}</td><td>${yn(r)}</td></tr>`).join("")+"</tbody></table></div></div>";
+  }).join("")||'<p class="empty">مفيش موجات.</p>';
+  // الشروط
+  const secs=Object.keys(D.sectors).filter(s=>!fs||s===fs).map(s=>({s,a:D.s10[s][L],b:D.brk[s][L],n:D.sectors[s].length,p:D.pre[s][L]}));
+  secs.sort((x,y)=>(y.a??-9)-(x.a??-9));
+  const ok=v=>v?'<span class="pill p-yes">✓</span>':'<span class="pill p-no">✗</span>';
+  $("cond-t").innerHTML=`<table><thead><tr><th>القطاع</th><th>فوق السوق آخر ١٠ جلسات</th><th>شرط ١: ٤٪ أو أكتر</th><th>كسروا لفوق آخر ١٠ جلسات</th><th>شرط ٢: ربع القطاع وسهمين</th><th>الـ٦٣ جلسة اللي قبلها</th><th>شرط ٣: أقل من ٥٪</th></tr></thead><tbody>`+
+    secs.map(x=>`<tr><td><b>${esc(x.s)}</b></td><td class="n ${cls(x.a)}">${pct(x.a)}</td><td>${ok(x.a!=null&&x.a>=0.04)}</td><td class="n">${AR(x.b)}/${AR(x.n)}</td><td>${ok(x.b>=2&&x.b/x.n>=0.25)}</td><td class="n ${cls(x.p)}">${pct(x.p)}</td><td>${ok(x.p!=null&&x.p<0.05)}</td></tr>`).join("")+"</tbody></table>";
+}
+$("f").addEventListener("submit",e=>{e.preventDefault();render()});
+["mode","sector","recent"].forEach(id=>$(id).addEventListener("change",render));
+$("today").addEventListener("click",()=>{setToday();render()});
+render();
+</script>
+</body>
+</html>

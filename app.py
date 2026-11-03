@@ -1,7 +1,7 @@
 """
 سيرفر صغير لـ Railway:
 - بيعرض صفحة موجات القطاعات على الرابط الرئيسي.
-- بيحدّث الأسعار والصفحة أول ما يشتغل، وبعدها كل يوم الساعة ٤ و٨ مساءً بتوقيت القاهرة.
+- بيحدّث الأسعار والصفحة أول ما يشتغل، وبعدها كل يوم الساعة ٩ الصبح و٤ العصر و٨ بالليل بتوقيت القاهرة (ياهو ساعات بيتأخر في نشر الجلسة).
 - لو حطيتي متغير APP_PASSWORD في Railway، الصفحة هتطلب اسم مستخدم (أي اسم) والباسورد ده.
 """
 import base64
@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 import update
 
 CAIRO = ZoneInfo("Africa/Cairo")
-HOURS = {16, 20}
+HOURS = {9, 16, 20}
 PASSWORD = os.environ.get("APP_PASSWORD", "")
 state = {"last": None, "running": False}
 lock = threading.Lock()

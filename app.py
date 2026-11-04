@@ -25,6 +25,18 @@ HOURS_1H = {11, 12, 13, 14, 15, 21}  # بعد ما شموع الساعة تقف�
 PASSWORD = os.environ.get("APP_PASSWORD", "")
 state = {"last": None, "running": False}
 hourly = {"proc": None}
+procs = {}
+
+
+def run_script(name, script):
+    import subprocess
+    import sys
+    p = procs.get(name)
+    if p is not None and p.poll() is None:
+        return
+    log = open(f"{name}_log.txt", "w", encoding="utf-8")
+    procs[name] = subprocess.Popen([sys.executable, "-u", script], stdout=log, stderr=subprocess.STDOUT,
+                                   env=dict(os.environ, PYTHONIOENCODING="utf-8"))
 
 
 def run_hourly(offline=False):
@@ -99,6 +111,20 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         return False
 
+    def _log_page(self, name, title, rerun, extra=""):
+        import html as _h
+        p = procs.get(name)
+        running = p is not None and p.poll() is None
+        f = f"{name}_log.txt"
+        txt = open(f, encoding="utf-8").read() if os.path.exists(f) else f"لسه ماشتغلش. افتحي {rerun}"
+        head = ("<p>شغال... الصفحة بتتحدث كل ٣٠ ثانية.</p>" if running else
+                f'<p>خلص أو مش شغال. <a href="{rerun}">شغّليه تاني</a></p>' + (extra if os.path.exists(f) else ""))
+        body = (f'<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'
+                f'{"<meta http-equiv=refresh content=30>" if running else ""}<title>{title}</title></head>'
+                f'<body style="font-family:Tahoma,sans-serif;padding:20px"><h2>{title}</h2>{head}'
+                f'<pre style="direction:rtl;white-space:pre-wrap;font-size:13px">{_h.escape(txt)}</pre></body></html>').encode("utf-8")
+        self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.end_headers(); self.wfile.write(body)
+
     def do_GET(self):
         if self.path.startswith("/health"):
             u = update.status
@@ -125,6 +151,25 @@ class H(BaseHTTPRequestHandler):
                 body = WAIT.replace("</body>", "<p>أول مرة بينزّل شموع الساعة لكل الأسهم، وده بياخد حوالي ٤٥ دقيقة.</p>"
                                     + (f'<p style="color:#b4372f">{st["error"]}</p>' if st["error"] else "") + "</body>").encode()
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Cache-Control", "no-cache"); self.end_headers(); self.wfile.write(body); return
+        if self.path.startswith("/chain-run"):
+            if not os.path.exists("prices_1h.csv"):
+                body = "شموع الساعة لسه بتتنزّل (افتحي /health وشوفي سطر 1h). جربي تاني بعد ما صفحة /1h تشتغل.".encode("utf-8")
+                self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers(); self.wfile.write(body); return
+            run_script("chain", "egx_chain.py")
+            self.send_response(302); self.send_header("Location", "/chain"); self.end_headers(); return
+        if self.path.split("?")[0] == "/chain":
+            self._log_page("chain", "سلسلة الإشارات: ساعة ← سهم ← قطاع", "/chain-run",
+                           '<p>الملفات: <a href="/download?f=chain_signals.csv">كل الإشارات (chain_signals.csv)</a> — '
+                           '<a href="/download?f=chain_summary.csv">الملخص (chain_summary.csv)</a></p>')
+            return
+        if self.path.startswith("/download"):
+            from urllib.parse import parse_qs, urlparse
+            f = parse_qs(urlparse(self.path).query).get("f", [""])[0]
+            if f in ("chain_signals.csv", "chain_summary.csv", "hourly_results.csv") and os.path.exists(f):
+                body = open(f, "rb").read()
+                self.send_response(200); self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Disposition", f'attachment; filename="{f}"'); self.end_headers(); self.wfile.write(body); return
+            self.send_response(404); self.end_headers(); return
         if self.path.startswith("/hourly-run"):
             run_hourly(offline="offline" in self.path and os.path.exists("prices_1h.csv"))
             self.send_response(302); self.send_header("Location", "/hourly"); self.end_headers(); return

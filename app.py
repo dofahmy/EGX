@@ -31,13 +31,17 @@ pending = {"chain": False}  # السلسلة تشتغل لوحدها أول ما
 
 
 def run_script(name, script):
+    """script: اسم ملف أو قايمة ملفات بتشتغل ورا بعض."""
     import subprocess
     import sys
     p = procs.get(name)
     if p is not None and p.poll() is None:
         return
     log = open(f"{name}_log.txt", "w", encoding="utf-8")
-    procs[name] = subprocess.Popen([sys.executable, "-u", script], stdout=log, stderr=subprocess.STDOUT,
+    scripts = [script] if isinstance(script, str) else list(script)
+    code = ("import runpy,sys,warnings;warnings.filterwarnings('ignore')\n"
+            f"for s in {scripts!r}:\n    print('='*20, s, '='*20, flush=True)\n    sys.argv=[s]\n    runpy.run_path(s, run_name='__main__')")
+    procs[name] = subprocess.Popen([sys.executable, "-u", "-c", code], stdout=log, stderr=subprocess.STDOUT,
                                    env=dict(os.environ, PYTHONIOENCODING="utf-8"))
 
 
@@ -83,6 +87,9 @@ def refresh_1h():
     if pending["chain"] and egx_web_1h.status["built"]:
         pending["chain"] = False
         run_script("chain", "egx_chain.py")
+    if pending.get("rule") and egx_web_1h.status["built"]:
+        pending["rule"] = False
+        run_script("rule", ["egx_chain.py", "egx_rule.py"])
 
 
 def scheduler():
@@ -166,6 +173,18 @@ class H(BaseHTTPRequestHandler):
                 body = WAIT.replace("</body>", "<p>أول مرة بينزّل شموع الساعة لكل الأسهم، وده بياخد حوالي ٤٥ دقيقة.</p>"
                                     + (f'<p style="color:#b4372f">{st["error"]}</p>' if st["error"] else "") + "</body>").encode()
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Cache-Control", "no-cache"); self.end_headers(); self.wfile.write(body); return
+        if self.path.startswith("/rule-run"):
+            if egx_web_1h.status["running"] or not egx_web_1h.status["built"]:
+                pending["rule"] = True
+            else:
+                run_script("rule", ["egx_chain.py", "egx_rule.py"])
+            self.send_response(302); self.send_header("Location", "/rule"); self.end_headers(); return
+        if self.path.split("?")[0] == "/rule":
+            self._log_page("rule", "اختبار القاعدة: ساعة ← قطاع ← سهم، وإشارات ٢٠٢٦", "/rule-run",
+                           '<p>الملفات: <a href="/download?f=rule_2026.csv">إشارات ٢٠٢٦ (rule_2026.csv)</a> — '
+                           '<a href="/download?f=rule_summary.csv">ملخص الاختبار</a> — '
+                           '<a href="/download?f=chain_signals.csv">كل السلسلة</a></p>')
+            return
         if self.path.startswith("/chain-run"):
             if egx_web_1h.status["running"] or not egx_web_1h.status["built"]:
                 pending["chain"] = True  # هتشتغل لوحدها بعد ما شموع الساعة تخلص
@@ -180,7 +199,7 @@ class H(BaseHTTPRequestHandler):
         if self.path.startswith("/download"):
             from urllib.parse import parse_qs, urlparse
             f = parse_qs(urlparse(self.path).query).get("f", [""])[0]
-            if f in ("chain_signals.csv", "chain_summary.csv", "hourly_results.csv") and os.path.exists(f):
+            if f in ("chain_signals.csv", "chain_summary.csv", "hourly_results.csv", "rule_2026.csv", "rule_summary.csv") and os.path.exists(f):
                 body = open(f, "rb").read()
                 self.send_response(200); self.send_header("Content-Type", "text/csv; charset=utf-8")
                 self.send_header("Content-Disposition", f'attachment; filename="{f}"'); self.end_headers(); self.wfile.write(body); return

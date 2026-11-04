@@ -84,8 +84,9 @@ def main():
     ap.add_argument('--out', default='novida_twin')
     ap.add_argument('--top', type=int, default=25)
     ap.add_argument('--step', type=int, default=3, help='slide step in trading days')
-    ap.add_argument('--speeds', default='0.75,1,1.33', help='window length multipliers (slower/faster twins)')
+    ap.add_argument('--speeds', default='0.5,0.75,1,1.33,1.75', help='window length multipliers (slower/faster twins)')
     ap.add_argument('--close-col', default='c'); ap.add_argument('--volume-col', default='v')
+    ap.add_argument('--min-corr', type=float, default=0.55)
     ap.add_argument('--csv', default='', help='CSV file or folder of CSVs instead of the database')
     a = ap.parse_args()
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
@@ -142,15 +143,15 @@ def main():
                 if jumps.max() > max(np.log(1.35), t_maxjump * 1.2):   # likely bonus/split, skip
                     continue
                 rng = w.max() - w.min()
-                if not (0.6 * t_range <= rng <= 1.7 * t_range):          # similar size of move
+                if not (0.5 * t_range <= rng <= 2.0 * t_range):          # similar size of move
                     continue
                 W = znorm(resample_path(w, N))
                 corr = float(np.dot(W, T) / N)
-                if corr < 0.80:
+                if corr < a.min_corr:
                     continue
                 rows.append((sym, sp, i, L, corr))
     if not rows:
-        raise SystemExit('no matches with correlation >= 0.80')
+        raise SystemExit(f'no matches with correlation >= {a.min_corr}; try --min-corr 0.4')
     m = pd.DataFrame(rows, columns=['symbol', 'speed', 'i', 'L', 'corr'])
 
     # keep best non-overlapping window per symbol (max 2 per symbol)

@@ -87,6 +87,9 @@ def refresh_1h():
     if pending["chain"] and egx_web_1h.status["built"]:
         pending["chain"] = False
         run_script("chain", "egx_chain.py")
+    if pending.get("ideas") and egx_web_1h.status["built"]:
+        pending["ideas"] = False
+        run_script("ideas", "egx_ideas.py")
     if pending.get("rule") and egx_web_1h.status["built"]:
         pending["rule"] = False
         run_script("rule", ["egx_chain.py", "egx_rule.py"])
@@ -173,6 +176,19 @@ class H(BaseHTTPRequestHandler):
                 body = WAIT.replace("</body>", "<p>أول مرة بينزّل شموع الساعة لكل الأسهم، وده بياخد حوالي ٤٥ دقيقة.</p>"
                                     + (f'<p style="color:#b4372f">{st["error"]}</p>' if st["error"] else "") + "</body>").encode()
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Cache-Control", "no-cache"); self.end_headers(); self.wfile.write(body); return
+        if self.path.startswith("/ideas-run"):
+            if egx_web_1h.status["running"] or not egx_web_1h.status["built"]:
+                pending["ideas"] = True
+            else:
+                run_script("ideas", "egx_ideas.py")
+            self.send_response(302); self.send_header("Location", "/ideas"); self.end_headers(); return
+        if self.path.split("?")[0] == "/ideas":
+            self._log_page("ideas", "فكرتين: ساعة ثم يومي، ولا نستنى القطاع؟", "/ideas-run",
+                           '<p>الملفات: <a href="/download?f=ideas_A_2026.csv">إشارات أ ٢٠٢٦</a> — '
+                           '<a href="/download?f=ideas_B_2026.csv">إشارات ب ٢٠٢٦</a> — '
+                           '<a href="/download?f=ideas_all.csv">كل الإشارات</a> — '
+                           '<a href="/download?f=ideas_summary.csv">الملخص</a></p>')
+            return
         if self.path.startswith("/rule-run"):
             if egx_web_1h.status["running"] or not egx_web_1h.status["built"]:
                 pending["rule"] = True
@@ -199,7 +215,8 @@ class H(BaseHTTPRequestHandler):
         if self.path.startswith("/download"):
             from urllib.parse import parse_qs, urlparse
             f = parse_qs(urlparse(self.path).query).get("f", [""])[0]
-            if f in ("chain_signals.csv", "chain_summary.csv", "hourly_results.csv", "rule_2026.csv", "rule_summary.csv") and os.path.exists(f):
+            if f in ("chain_signals.csv", "chain_summary.csv", "hourly_results.csv", "rule_2026.csv", "rule_summary.csv",
+                     "ideas_A_2026.csv", "ideas_B_2026.csv", "ideas_all.csv", "ideas_summary.csv") and os.path.exists(f):
                 body = open(f, "rb").read()
                 self.send_response(200); self.send_header("Content-Type", "text/csv; charset=utf-8")
                 self.send_header("Content-Disposition", f'attachment; filename="{f}"'); self.end_headers(); self.wfile.write(body); return

@@ -28,6 +28,54 @@ def resample_path(x, n):
     return np.interp(xi, np.arange(len(x)), x)
 
 
+ALIAS = {
+    'symbol': ['symbol', 'ticker', 'code', 'رمز', 'الرمز', 'كود', 'الكود', 'reuters', 'sym'],
+    'date': ['session_date', 'date', 'time', 'datetime', 'timestamp', 'التاريخ', 'تاريخ'],
+    'c': ['close', 'c', 'adj close', 'adj_close', 'price', 'last', 'إغلاق', 'الإغلاق', 'اغلاق', 'الاغلاق', 'السعر', 'آخر سعر'],
+    'v': ['volume', 'v', 'vol', 'vol.', 'الحجم', 'حجم', 'حجم التداول', 'الكمية', 'كمية'],
+}
+
+
+def _num(s):
+    s = s.astype(str).str.replace(',', '').str.replace('%', '').str.strip()
+    mult = s.str[-1].str.upper().map({'K': 1e3, 'M': 1e6, 'B': 1e9}).fillna(1)
+    s = s.where(~s.str[-1].str.upper().isin(['K', 'M', 'B']), s.str[:-1])
+    return pd.to_numeric(s, errors='coerce') * mult
+
+
+def load_csvs(path, suffix):
+    p = Path(path)
+    files = sorted(p.rglob('*.csv')) if p.is_dir() else [p]
+    parts = []
+    for f in files:
+        try:
+            x = pd.read_csv(f, encoding='utf-8-sig')
+        except UnicodeDecodeError:
+            x = pd.read_csv(f, encoding='cp1256')
+        except Exception as ex:
+            print('skip', f, ex); continue
+        low = {c.strip().lower(): c for c in x.columns}
+        pick = {}
+        for k, names in ALIAS.items():
+            for n in names:
+                if n in low:
+                    pick[k] = low[n]; break
+        if 'date' not in pick or 'c' not in pick:
+            print('skip (no date/close column):', f.name, list(x.columns)[:8]); continue
+        y = pd.DataFrame({'date': pd.to_datetime(x[pick['date']], errors='coerce', dayfirst=False),
+                          'c': _num(x[pick['c']]),
+                          'v': _num(x[pick['v']]) if 'v' in pick else np.nan})
+        if 'symbol' in pick:
+            y['symbol'] = x[pick['symbol']].astype(str).str.strip().str.upper()
+        else:
+            y['symbol'] = f.stem.split('_')[0].split(' ')[0].upper()
+        y['symbol'] = np.where(y.symbol.str.endswith(suffix.upper()), y.symbol, y.symbol + suffix.upper())
+        parts.append(y.dropna(subset=['date', 'c']))
+    if not parts:
+        raise SystemExit(f'no usable CSV files in {path}')
+    return pd.concat(parts, ignore_index=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--target', default='AMPI.CA')
@@ -38,17 +86,22 @@ def main():
     ap.add_argument('--step', type=int, default=3, help='slide step in trading days')
     ap.add_argument('--speeds', default='0.75,1,1.33', help='window length multipliers (slower/faster twins)')
     ap.add_argument('--close-col', default='c'); ap.add_argument('--volume-col', default='v')
+    ap.add_argument('--csv', default='', help='CSV file or folder of CSVs instead of the database')
     a = ap.parse_args()
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
 
-    url = os.environ['DATABASE_URL']
-    if url.startswith('postgres://'):
-        url = 'postgresql://' + url[len('postgres://'):]
-    eng = create_engine(url)
-    q = text(f'''SELECT symbol, session_date AS date, {a.close_col} AS c, {a.volume_col} AS v
-                 FROM market_candles_1d WHERE symbol LIKE :suf''')
-    with eng.connect() as cn:
-        d = pd.concat(pd.read_sql(q, cn, params={'suf': '%' + a.suffix}, chunksize=500_000), ignore_index=True)
+    if a.csv:
+        d = load_csvs(a.csv, a.suffix)
+    else:
+        url = os.environ['DATABASE_URL']
+        if url.startswith('postgres://'):
+            url = 'postgresql://' + url[len('postgres://'):]
+        eng = create_engine(url)
+        q = text(f'''SELECT symbol, session_date AS date, {a.close_col} AS c, {a.volume_col} AS v
+                     FROM market_candles_1d WHERE symbol LIKE :suf''')
+        with eng.connect() as cn:
+            d = pd.concat(pd.read_sql(q, cn, params={'suf': '%' + a.suffix}, chunksize=500_000), ignore_index=True)
+    print(f'loaded {d.symbol.nunique()} symbols, {len(d):,} rows', flush=True)
     d['date'] = pd.to_datetime(d.date)
     d['c'] = pd.to_numeric(d.c, errors='coerce'); d['v'] = pd.to_numeric(d.v, errors='coerce')
     d = d.dropna(subset=['c']).query('c > 0').drop_duplicates(['symbol', 'date']).sort_values(['symbol', 'date'])

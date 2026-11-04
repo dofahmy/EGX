@@ -17,8 +17,46 @@ from pathlib import Path
 import numpy as np, pandas as pd
 
 
+def fetch_tv(symbols, exchange='EGX', bars=1500, save=None):
+    """download daily bars from TradingView (no login needed)."""
+    try:
+        from tvDatafeed import TvDatafeed, Interval
+    except ImportError:
+        import subprocess, sys
+        print('installing tvdatafeed ...', flush=True)
+        subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '--break-system-packages',
+                        'git+https://github.com/rongardF/tvdatafeed.git'], check=True)
+        from tvDatafeed import TvDatafeed, Interval
+    tv = TvDatafeed()
+    parts = []
+    for s in symbols:
+        x = None
+        for attempt in range(3):
+            try:
+                x = tv.get_hist(symbol=s, exchange=exchange, interval=Interval.in_daily, n_bars=bars)
+                if x is not None and len(x):
+                    break
+            except Exception as ex:
+                print(f'  {s}: try {attempt+1} failed ({ex})')
+        if x is None or not len(x):
+            raise SystemExit(f'could not download {exchange}:{s} from TradingView')
+        x = x.reset_index().rename(columns={'datetime': 'date'})
+        x['date'] = pd.to_datetime(x['date']).dt.normalize()
+        x['ticker'] = s
+        parts.append(x[['date', 'ticker', 'open', 'high', 'low', 'close', 'volume']])
+        print(f'  {exchange}:{s}: {len(x)} days, {x.date.min().date()} -> {x.date.max().date()}', flush=True)
+    d = pd.concat(parts, ignore_index=True)
+    if save:
+        d.to_csv(save, index=False)
+        print(f'  saved prices -> {save}')
+    return d
+
+
 def load(csv):
-    d = pd.read_csv(csv)
+    if isinstance(csv, pd.DataFrame):
+        d = csv.copy()
+    else:
+        d = pd.read_csv(csv)
     d.columns = [c.strip().lower() for c in d.columns]
     sym = 'ticker' if 'ticker' in d else 'symbol'
     d = d.rename(columns={sym: 'symbol'})
@@ -72,10 +110,15 @@ def main():
     ap.add_argument('--src-shares', type=float, default=52_250_000, help='Tycoon shares after the 1:10 split')
     ap.add_argument('--dst-shares', type=float, default=29_924_028)
     ap.add_argument('--out', default='tycoon_replay')
+    ap.add_argument('--tv', action='store_true', help='download TYCN + AMPI from TradingView first')
     a = ap.parse_args()
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
 
-    d = load(a.csv)
+    if a.tv:
+        srcs = [x.strip().upper() for x in a.src.split(',')][:1]
+        d = load(fetch_tv(srcs + [a.dst.upper()], save=out / 'tv_prices.csv'))
+    else:
+        d = load(a.csv)
     sname, s = pick(d, [x.strip().upper() for x in a.src.split(',')])
     dname, t = pick(d, [a.dst.upper()])
     s = unsplit(s)

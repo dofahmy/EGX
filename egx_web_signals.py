@@ -56,6 +56,15 @@ def compute():
     n = len(idx)
     start = idx.searchsorted(t0 + pd.Timedelta(days=30))
 
+    # موجات القطاع اليومية (نفس صفحة موجات القطاعات)
+    from egx_hourly import system, DAILY
+    Sd = sectors[sectors["ticker"].isin(C.columns)].set_index("ticker")
+    _, _, waves, _ = system(C, Sd, DAILY)
+    win = {}
+    for i, s_ in waves:
+        for tt in Sd.index[Sd["sector"] == s_]:
+            win.setdefault(tt, []).append((i - 9, i + 40, i))
+
     rows = []
     for t in db.columns:
         if t not in secmap or t not in hb:
@@ -78,7 +87,15 @@ def compute():
                 hits[str(x)] = int(w[0] + 1) if len(w) else None
             lastp = Cf[t].iloc[k:].dropna()
             minlow = np.nanmin(lo) if len(lo) and np.isfinite(lo).any() else np.nan
+            sec_i = next((i for lo_i, hi_i, i in win.get(t, []) if lo_i <= k <= hi_i), None)
+            if sec_i is None:
+                ss, sd_ = "لسه", None
+            elif sec_i < k:
+                ss, sd_ = "قبل", idx[sec_i].strftime("%Y-%m-%d")
+            else:
+                ss, sd_ = "بعد", idx[sec_i].strftime("%Y-%m-%d")
             rows.append({
+                "ss": ss, "sd": sd_,
                 "t": t, "n": names.get(t, t), "s": secmap.get(t),
                 "ht": h0.strftime("%Y-%m-%d %H:%M"), "hp": round(float(Ch[t].loc[h0]), 3),
                 "d": day.strftime("%Y-%m-%d"), "bp": round(buy, 3),
@@ -174,6 +191,7 @@ td.c{text-align:center}
     <label>القطاع<select id="sec"><option value="">كل القطاعات</option></select></label>
     <label>السهم<input type="search" id="q" placeholder="اكتبي اسم السهم"></label>
     <label>الحالة<select id="st"><option value="">الكل</option><option value="open">لسه ماوصلش +٥٪</option><option value="t5">وصل +٥٪</option><option value="t20">وصل +٢٠٪</option></select></label>
+    <label>القطاع أكد؟<select id="sx"><option value="">الكل</option><option value="لسه">لسه ماأكدش</option><option value="قبل">أكد قبل السهم</option><option value="بعد">أكد بعد السهم</option></select></label>
   </div>
   <nav><a href="/">موجات القطاعات</a><a href="/1h">فريم الساعة</a></nav>
 </div></header>
@@ -187,10 +205,10 @@ td.c{text-align:center}
     <h2>كل التوصيات</h2>
     <p class="sub">الأحدث فوق. علامة ✓ يعني السهم وصل للهدف، والرقم تحتها بعد كام جلسة من يوم الشراء. الهدف بيتحسب من أعلى سعر في الجلسة.</p>
     <div class="scroll"><table><thead><tr>
-      <th>السهم</th><th>كسر الساعة</th><th>سعر الساعة</th><th>كسر اليومي (الشراء)</th><th>سعر الشراء</th>
+      <th>السهم</th><th>كسر الساعة</th><th>سعر الساعة</th><th>كسر اليومي (الشراء)</th><th>سعر الشراء</th><th>إشارة القطاع</th>
       <th>+٥٪</th><th>+١٠٪</th><th>+٢٠٪</th><th>+٥٠٪</th><th>آخر سعر</th><th>من الشراء</th><th>أقصى نزول</th>
     </tr></thead><tbody id="rows"></tbody></table></div>
-    <p class="note">الإشارة: السهم كسر أعلى إغلاق في ٦٠ شمعة ساعة، وبعدها في خلال ١٠ أيام تداول كسر أعلى إغلاق في ٦٠ جلسة على اليومي. سعر الشراء = إغلاق يوم كسر اليومي. "أقصى نزول" = أقل سعر وصله بعد الشراء.</p>
+    <p class="note">الإشارة: السهم كسر أعلى إغلاق في ٦٠ شمعة ساعة، وبعدها في خلال ١٠ أيام تداول كسر أعلى إغلاق في ٦٠ جلسة على اليومي. سعر الشراء = إغلاق يوم كسر اليومي. "أقصى نزول" = أقل سعر وصله بعد الشراء. "إشارة القطاع" = إشارة موجة القطاع اليومية لو السهم جوه موجتها (من ١٠ جلسات قبلها لحد ٤٠ بعدها)، و"لسه ماأكدش" يعني قطاعه مادّاش إشارة حوالين كسر السهم لحد دلوقتي.</p>
     <p class="note">الاختبار التاريخي من ٢٠٢٢: الإشارات دي كسبت السوق بحوالي ٢٪ في أول ٢٠ يوم بعد التكلفة، وبعد ٩٠ يوم الميزة اختفت. ده سجل للإشارات ومش توصية بالشرا أو البيع.</p>
   </section>
 </main></div>
@@ -210,8 +228,9 @@ function cell(r,x){const n=r.hit[String(x)];
   if(n!=null)return `<span class="hit" title="وصل +${x}٪ بعد ${n} جلسة"><span class="ok">✓</span><span class="n">${AR(n)} جلسة</span></span>`;
   return `<span class="no">لسه</span>`}
 function render(){
-  const f=$("from").value||"0000", s=$("sec").value, q=$("q").value.trim(), st=$("st").value;
+  const f=$("from").value||"0000", s=$("sec").value, q=$("q").value.trim(), st=$("st").value, sx=$("sx").value;
   let R=D.rows.filter(r=>r.d>=f&&(!s||r.s===s)&&(!q||r.n.includes(q)||r.t.toLowerCase().includes(q.toLowerCase())));
+  if(sx)R=R.filter(r=>r.ss===sx);
   if(st==="open")R=R.filter(r=>r.hit["5"]==null);
   if(st==="t5")R=R.filter(r=>r.hit["5"]!=null);
   if(st==="t20")R=R.filter(r=>r.hit["20"]!=null);
@@ -225,11 +244,12 @@ function render(){
     <td class="nm"><b>${esc(r.n)}</b><span>${esc(r.s)} — ${esc(r.t)}</span></td>
     <td class="dt">${fd(r.ht)}</td><td>${num(r.hp)}</td>
     <td>${fd(r.d)}<div class="dt">من ${AR(r.age)} جلسة</div></td><td><b>${num(r.bp)}</b></td>
+    <td>${r.ss==="لسه"?'<span class="no">لسه ماأكدش</span>':`${fd(r.sd)}<div class="dt">${r.ss==="قبل"?"قبل السهم":"بعد السهم"}</div>`}</td>
     ${D.targets.map(x=>`<td class="c">${cell(r,x)}</td>`).join("")}
     <td>${num(r.lp)}</td><td class="${ret>0?"up":ret<0?"down":""}">${pct(ret)}</td><td class="down">${r.dd==null?"—":pct(r.dd)}</td></tr>`}).join("")
-    :`<tr><td colspan="12" class="empty">مفيش توصيات بالشروط دي.</td></tr>`;
+    :`<tr><td colspan="13" class="empty">مفيش توصيات بالشروط دي.</td></tr>`;
 }
-["from","sec","q","st"].forEach(id=>$(id).addEventListener("input",render));
+["from","sec","q","st","sx"].forEach(id=>$(id).addEventListener("input",render));
 render();
 </script>
 </body>

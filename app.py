@@ -27,6 +27,7 @@ PASSWORD = os.environ.get("APP_PASSWORD", "")
 state = {"last": None, "running": False}
 hourly = {"proc": None}
 procs = {}
+pending = {"chain": False}  # السلسلة تشتغل لوحدها أول ما شموع الساعة تجهز
 
 
 def run_script(name, script):
@@ -79,6 +80,9 @@ def refresh_1h():
         egx_web_1h.run(lambda m: print(m, flush=True))
     except Exception as e:
         print("[ساعة] فشل:", e, flush=True)
+    if pending["chain"] and egx_web_1h.status["built"]:
+        pending["chain"] = False
+        run_script("chain", "egx_chain.py")
 
 
 def scheduler():
@@ -116,10 +120,20 @@ class H(BaseHTTPRequestHandler):
         import html as _h
         p = procs.get(name)
         running = p is not None and p.poll() is None
+        waiting = pending.get(name, False)
         f = f"{name}_log.txt"
         txt = open(f, encoding="utf-8").read() if os.path.exists(f) else f"لسه ماشتغلش. افتحي {rerun}"
-        head = ("<p>شغال... الصفحة بتتحدث كل ٣٠ ثانية.</p>" if running else
-                f'<p>خلص أو مش شغال. <a href="{rerun}">شغّليه تاني</a></p>' + (extra if os.path.exists(f) else ""))
+        if waiting and not running:
+            st = egx_web_1h.status
+            head = ("<p><b>مستني شموع الساعة تخلص تنزيل، وبعدها هيشتغل لوحده.</b> مش محتاجة تعملي حاجة، "
+                    "الصفحة بتتحدث لوحدها كل ٣٠ ثانية.</p>"
+                    f"<p>حالة شموع الساعة: {'بتتنزّل دلوقتي' if st['running'] else 'مستنية'}"
+                    f"{' — ' + st['error'] if st['error'] else ''}</p>")
+            running = True
+            txt = ""
+        else:
+          head = ("<p>شغال... الصفحة بتتحدث كل ٣٠ ثانية.</p>" if running else
+                  f'<p>خلص أو مش شغال. <a href="{rerun}">شغّليه تاني</a></p>' + (extra if os.path.exists(f) else ""))
         body = (f'<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'
                 f'{"<meta http-equiv=refresh content=30>" if running else ""}<title>{title}</title></head>'
                 f'<body style="font-family:Tahoma,sans-serif;padding:20px"><h2>{title}</h2>{head}'
@@ -153,10 +167,10 @@ class H(BaseHTTPRequestHandler):
                                     + (f'<p style="color:#b4372f">{st["error"]}</p>' if st["error"] else "") + "</body>").encode()
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Cache-Control", "no-cache"); self.end_headers(); self.wfile.write(body); return
         if self.path.startswith("/chain-run"):
-            if not os.path.exists(D("prices_1h.csv")):
-                body = "شموع الساعة لسه بتتنزّل (افتحي /health وشوفي سطر 1h). جربي تاني بعد ما صفحة /1h تشتغل.".encode("utf-8")
-                self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers(); self.wfile.write(body); return
-            run_script("chain", "egx_chain.py")
+            if egx_web_1h.status["running"] or not egx_web_1h.status["built"]:
+                pending["chain"] = True  # هتشتغل لوحدها بعد ما شموع الساعة تخلص
+            else:
+                run_script("chain", "egx_chain.py")
             self.send_response(302); self.send_header("Location", "/chain"); self.end_headers(); return
         if self.path.split("?")[0] == "/chain":
             self._log_page("chain", "سلسلة الإشارات: ساعة ← سهم ← قطاع", "/chain-run",

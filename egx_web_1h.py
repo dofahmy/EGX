@@ -16,9 +16,11 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 
+from datadir import D
+
 P = dict(win=10, look=60, minp=40, pre=63, cool=63, active=40, ret=0.02, fresh=0.025, brd=0.25, mn=2)
 KEEP = 2500          # عدد الشموع اللي بتظهر في الصفحة (حوالي سنتين)
-PATH = "prices_1h.csv"
+PATH = D("prices_1h.csv")
 CAIRO = ZoneInfo("Africa/Cairo")
 status = {"error": None, "last_bar": None, "tickers": 0, "running": False, "built": None}
 
@@ -40,7 +42,10 @@ def update(log=print, timeout=45):
         time.tzset()
     tickers = pd.read_csv("egx_sectors.csv", encoding="utf-8-sig")["ticker"].tolist()
     old = pd.read_csv(PATH) if os.path.exists(PATH) else None
-    have = set(old["ticker"].unique()) if old is not None else set()
+    have = set()
+    if old is not None:
+        last = pd.to_datetime(old.groupby("ticker")["dt"].max())
+        have = set(last[last >= pd.Timestamp.now() - pd.Timedelta(days=7)].index)  # اللي متأخر أكتر من أسبوع ينزل كامل
     st = {"tv": _client()}
 
     def one(t, bars):

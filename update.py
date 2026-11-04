@@ -9,6 +9,8 @@ import time
 
 import pandas as pd
 
+from datadir import D
+
 import tv_prices
 
 status = {"error": None, "last_price_date": None, "tickers_updated": 0, "source": None, "full_tv": False}
@@ -16,8 +18,8 @@ COLS = tv_prices.COLS
 
 
 def base_prices():
-    if os.path.exists("prices.csv"):
-        return pd.read_csv("prices.csv")
+    if os.path.exists(D("prices.csv")):
+        return pd.read_csv(D("prices.csv"))
     if os.path.exists("prices_seed.csv.gz"):
         return pd.read_csv("prices_seed.csv.gz")
     return pd.DataFrame(columns=COLS)
@@ -60,7 +62,10 @@ def run():
 
     # ١. تريدنج فيو
     try:
-        bars = 15 if status["full_tv"] else 2000
+        fresh = False
+        if len(p):  # لو الأسعار المحفوظة حديثة (آخر ١٠ أيام) نكمّل عليها بس
+            fresh = (pd.Timestamp.now() - pd.to_datetime(p["date"]).max()).days <= 10 and os.path.exists(D("prices.csv"))
+        bars = 15 if (status["full_tv"] or fresh) else 2000
         print(f"[تحديث] تريدنج فيو: {bars} جلسة لـ {len(tickers)} سهم", flush=True)
         new, failed = tv_prices.fetch(tickers, bars=bars, log=lambda m: print(m, flush=True))
         if new["ticker"].nunique() >= 150:
@@ -96,8 +101,8 @@ def run():
     if p.empty:
         print("[تحديث] مفيش أسعار خالص", status["error"], flush=True)
         return False
-    p.to_csv("prices.tmp.csv", index=False)
-    os.replace("prices.tmp.csv", "prices.csv")
+    p.to_csv(D("prices.tmp.csv"), index=False)
+    os.replace(D("prices.tmp.csv"), D("prices.csv"))
     status["last_price_date"] = str(p["date"].max())[:10]
     print(f"[تحديث] المصدر: {status['source']} — أسعار لحد {status['last_price_date']} — {status['tickers_updated']} سهم"
           + (f" — تنبيه: {status['error']}" if status["error"] else ""), flush=True)

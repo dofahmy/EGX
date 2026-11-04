@@ -17,6 +17,7 @@ try:
 except Exception:
     gold_web = None
 import update
+from datadir import D, DIR
 import egx_web_1h
 
 CAIRO = ZoneInfo("Africa/Cairo")
@@ -128,7 +129,7 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/health"):
             u = update.status
-            body = (f"ok last={state['last']} running={state['running']} prices_until={u['last_price_date']} source={u['source']} "
+            body = (f"ok data_dir={DIR} last={state['last']} running={state['running']} prices_until={u['last_price_date']} source={u['source']} "
                     f"tickers_updated={u['tickers_updated']} error={u['error']}"
                     + f"\n1h: running={egx_web_1h.status['running']} last_bar={egx_web_1h.status['last_bar']} built={egx_web_1h.status['built']} error={egx_web_1h.status['error']}"
                     + (f"\ngold_until={gold_web.status['gold_until']} local_until={gold_web.status['local_until']} "
@@ -152,7 +153,7 @@ class H(BaseHTTPRequestHandler):
                                     + (f'<p style="color:#b4372f">{st["error"]}</p>' if st["error"] else "") + "</body>").encode()
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Cache-Control", "no-cache"); self.end_headers(); self.wfile.write(body); return
         if self.path.startswith("/chain-run"):
-            if not os.path.exists("prices_1h.csv"):
+            if not os.path.exists(D("prices_1h.csv")):
                 body = "شموع الساعة لسه بتتنزّل (افتحي /health وشوفي سطر 1h). جربي تاني بعد ما صفحة /1h تشتغل.".encode("utf-8")
                 self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers(); self.wfile.write(body); return
             run_script("chain", "egx_chain.py")
@@ -171,7 +172,7 @@ class H(BaseHTTPRequestHandler):
                 self.send_header("Content-Disposition", f'attachment; filename="{f}"'); self.end_headers(); self.wfile.write(body); return
             self.send_response(404); self.end_headers(); return
         if self.path.startswith("/hourly-run"):
-            run_hourly(offline="offline" in self.path and os.path.exists("prices_1h.csv"))
+            run_hourly(offline="offline" in self.path and os.path.exists(D("prices_1h.csv")))
             self.send_response(302); self.send_header("Location", "/hourly"); self.end_headers(); return
         if self.path.startswith("/hourly"):
             p = hourly["proc"]

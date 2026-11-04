@@ -14,6 +14,8 @@
 import numpy as np
 import pandas as pd
 
+from datadir import D
+
 import egx_hourly as H
 
 HORIZONS = (20, 60, 90, 120)
@@ -25,12 +27,12 @@ def main():
     pd.set_option("display.max_columns", 40)
     sectors = pd.read_csv("egx_sectors.csv", encoding="utf-8-sig")
     names = sectors.set_index("ticker")["name"].to_dict()
-    Ch, Sh = H.wide(pd.read_csv("prices_1h.csv"), "dt", sectors)
+    Ch, Sh = H.wide(pd.read_csv(D("prices_1h.csv")), "dt", sectors)
     have = Ch.notna().cumsum().gt(0).sum(axis=1)
     t0 = have[have >= 0.5 * Ch.shape[1]].index[0].normalize()
     Ch = Ch.loc[t0:]
     bpd = int(round(Ch.groupby(Ch.index.date).size().median()))
-    Cd, Sd = H.wide(pd.read_csv("prices.csv"), "date", sectors)
+    Cd, Sd = H.wide(pd.read_csv(D("prices.csv")), "date", sectors)
 
     # الساعة: النسخة السريعة (نفس صفحة /1h)
     Cfh, _, _, sh = H.system(Ch, Sh, H.params("سريع", bpd))

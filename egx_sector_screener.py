@@ -21,6 +21,8 @@ import argparse
 import numpy as np
 import pandas as pd
 
+from datadir import D
+
 # ---------- قواعد السيستم (نفس الاختبار) ----------
 IGN_RET = 0.04      # القطاع فوق السوق في آخر ١٠ جلسات
 IGN_BREADTH = 0.25  # ربع أسهم القطاع عملوا قمة ٦٠ جلسة في آخر ١٠ جلسات
@@ -31,8 +33,8 @@ WINDOW = 40         # الإشارة بتفضل "نشطة" ٤٠ جلسة
 LOOKBACK = 60       # إشارة السهم = إغلاق فوق أعلى إغلاق في ٦٠ جلسة
 
 
-def load(prices="prices.csv", sectors="egx_sectors.csv", end=None):
-    p = pd.read_csv(prices, parse_dates=["date"])
+def load(prices=None, sectors="egx_sectors.csv", end=None):
+    p = pd.read_csv(prices or D("prices.csv"), parse_dates=["date"])
     p.loc[p["volume"] <= 0, "close"] = np.nan
     C = p.pivot_table(index="date", columns="ticker", values="close").sort_index()
     C = C.mask(C <= 0)

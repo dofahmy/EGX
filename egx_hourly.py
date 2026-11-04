@@ -26,6 +26,8 @@ import time
 import numpy as np
 import pandas as pd
 
+from datadir import D
+
 os.environ["TZ"] = "UTC"
 if hasattr(time, "tzset"):
     time.tzset()
@@ -44,7 +46,8 @@ def params(mode, bpd):
 
 
 # ---------------- التنزيل ----------------
-def fetch(tickers, bars=5000, timeout=45, path="prices_1h.csv"):
+def fetch(tickers, bars=5000, timeout=45, path=None):
+    path = path or D("prices_1h.csv")
     from tvDatafeed import TvDatafeed, Interval
     u, p = os.environ.get("TV_USERNAME"), os.environ.get("TV_PASSWORD")
     st = {"tv": TvDatafeed(u, p) if u and p else TvDatafeed()}
@@ -205,14 +208,14 @@ def main():
     pd.set_option("display.width", 250)
     pd.set_option("display.max_columns", 30)
     sectors = pd.read_csv("egx_sectors.csv", encoding="utf-8-sig")
-    ph = pd.read_csv("prices_1h.csv") if a.offline else fetch(sectors["ticker"].tolist(), bars=a.bars)
+    ph = pd.read_csv(D("prices_1h.csv")) if a.offline else fetch(sectors["ticker"].tolist(), bars=a.bars)
     Ch, S = wide(ph, "dt", sectors)
     bpd = int(round(Ch.groupby(Ch.index.date).size().median()))
     # الفترة المشتركة: من أول يوم نص الأسهم أو أكتر عندها شموع ساعة
     have = Ch.notna().cumsum().gt(0).sum(axis=1)
     t0 = have[have >= 0.5 * Ch.shape[1]].index[0].normalize()
     Ch = Ch.loc[t0:]
-    pdly = pd.read_csv("prices.csv")
+    pdly = pd.read_csv(D("prices.csv"))
     Cd, Sd = wide(pdly, "date", sectors)
     Cd = Cd.loc[Ch.index[0].normalize():]
     print(f"\nشموع الساعة: {Ch.index[0]:%Y-%m-%d} لـ {Ch.index[-1]:%Y-%m-%d %H:%M} — {Ch.shape[1]} سهم — {bpd} شمعة في اليوم")

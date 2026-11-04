@@ -19,6 +19,7 @@ except Exception:
 import update
 from datadir import D, DIR
 import egx_web_1h
+import egx_web_signals
 
 CAIRO = ZoneInfo("Africa/Cairo")
 HOURS = {9, 16, 20}
@@ -37,7 +38,7 @@ def run_script(name, script):
     p = procs.get(name)
     if p is not None and p.poll() is None:
         return
-    log = open(f"{name}_log.txt", "w", encoding="utf-8")
+    log = open(D(f"{name}_log.txt"), "w", encoding="utf-8")
     scripts = [script] if isinstance(script, str) else list(script)
     code = ("import runpy,sys,warnings;warnings.filterwarnings('ignore')\n"
             f"for s in {scripts!r}:\n    print('='*20, s, '='*20, flush=True)\n    sys.argv=[s]\n    runpy.run_path(s, run_name='__main__')")
@@ -70,6 +71,7 @@ def refresh():
     try:
         if update.run():
             state["last"] = datetime.now(CAIRO)
+            egx_web_signals.run()
         try:
             if gold_web:
                 gold_web.run(lambda m: print(m, flush=True))
@@ -84,6 +86,7 @@ def refresh_1h():
         egx_web_1h.run(lambda m: print(m, flush=True))
     except Exception as e:
         print("[ساعة] فشل:", e, flush=True)
+    egx_web_signals.run()
     if pending["chain"] and egx_web_1h.status["built"]:
         pending["chain"] = False
         run_script("chain", "egx_chain.py")
@@ -131,7 +134,7 @@ class H(BaseHTTPRequestHandler):
         p = procs.get(name)
         running = p is not None and p.poll() is None
         waiting = pending.get(name, False)
-        f = f"{name}_log.txt"
+        f = D(f"{name}_log.txt")
         txt = open(f, encoding="utf-8").read() if os.path.exists(f) else f"لسه ماشتغلش. افتحي {rerun}"
         if waiting and not running:
             st = egx_web_1h.status
@@ -155,6 +158,7 @@ class H(BaseHTTPRequestHandler):
             u = update.status
             body = (f"ok data_dir={DIR} last={state['last']} running={state['running']} prices_until={u['last_price_date']} source={u['source']} "
                     f"tickers_updated={u['tickers_updated']} error={u['error']}"
+                    + f"\nsignals: built={egx_web_signals.status['built']} count={egx_web_signals.status['signals']} error={egx_web_signals.status['error']}"
                     + f"\n1h: running={egx_web_1h.status['running']} last_bar={egx_web_1h.status['last_bar']} built={egx_web_1h.status['built']} error={egx_web_1h.status['error']}"
                     + (f"\ngold_until={gold_web.status['gold_until']} local_until={gold_web.status['local_until']} "
                        f"local_added={gold_web.status['local_added']} gold_error={gold_web.status['error']}" if gold_web else "")).encode("utf-8")
@@ -164,6 +168,17 @@ class H(BaseHTTPRequestHandler):
         if self.path.split("?")[0] == "/refresh":
             threading.Thread(target=refresh, daemon=True).start()
             self.send_response(302); self.send_header("Location", "/"); self.end_headers(); return
+        if self.path.split("?")[0] == "/signals":
+            page = D("signals.html")
+            if os.path.exists(page):
+                body = open(page, "rb").read()
+            else:
+                if os.path.exists(D("prices_1h.csv")) and not egx_web_signals.status["error"]:
+                    threading.Thread(target=egx_web_signals.run, daemon=True).start()
+                body = WAIT.replace("</body>", "<p>صفحة التوصيات بتتعمل بعد ما الأسعار وشموع الساعة يتحدثوا.</p>"
+                                    + (f'<p style="color:#b4372f">{egx_web_signals.status["error"]}</p>' if egx_web_signals.status["error"] else "")
+                                    + "</body>").encode()
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Cache-Control", "no-cache"); self.end_headers(); self.wfile.write(body); return
         if self.path.startswith("/refresh-1h"):
             threading.Thread(target=refresh_1h, daemon=True).start()
             self.send_response(302); self.send_header("Location", "/1h"); self.end_headers(); return
@@ -184,6 +199,8 @@ class H(BaseHTTPRequestHandler):
             self.send_response(302); self.send_header("Location", "/ideas"); self.end_headers(); return
         if self.path.split("?")[0] == "/ideas":
             self._log_page("ideas", "فكرتين: ساعة ثم يومي، ولا نستنى القطاع؟", "/ideas-run",
+                           '<p>اعرضي في المتصفح: <a href="/view?f=ideas_A_2026.csv">إشارات أ ٢٠٢٦</a> — '
+                           '<a href="/view?f=ideas_B_2026.csv">إشارات ب ٢٠٢٦</a></p>'
                            '<p>الملفات: <a href="/download?f=ideas_A_2026.csv">إشارات أ ٢٠٢٦</a> — '
                            '<a href="/download?f=ideas_B_2026.csv">إشارات ب ٢٠٢٦</a> — '
                            '<a href="/download?f=ideas_all.csv">كل الإشارات</a> — '
@@ -212,14 +229,34 @@ class H(BaseHTTPRequestHandler):
                            '<p>الملفات: <a href="/download?f=chain_signals.csv">كل الإشارات (chain_signals.csv)</a> — '
                            '<a href="/download?f=chain_summary.csv">الملخص (chain_summary.csv)</a></p>')
             return
+        if self.path.startswith("/view"):
+            from urllib.parse import parse_qs, urlparse
+            import html as _h
+            import pandas as pd
+            f = parse_qs(urlparse(self.path).query).get("f", [""])[0]
+            ok = f.endswith(".csv") and "/" not in f and not f.startswith("prices") and os.path.exists(D(f))
+            if not ok:
+                body = f"الملف {f} مش موجود. شغّلي الاختبار تاني (مثلا /ideas-run) واستني دقيقة.".encode("utf-8")
+                self.send_response(404); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers(); self.wfile.write(body); return
+            t = pd.read_csv(D(f), encoding="utf-8-sig")
+            tbl = t.to_html(index=False, na_rep="", border=0, escape=True)
+            body = (f'<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>{_h.escape(f)}</title>'
+                    '<style>body{font-family:Tahoma,sans-serif;padding:16px}table{border-collapse:collapse;font-size:13px}'
+                    'th,td{border-bottom:1px solid #dde3ec;padding:6px 8px;text-align:right;white-space:nowrap}'
+                    'th{position:sticky;top:0;background:#eef2f7}</style></head><body>'
+                    f'<h3>{_h.escape(f)} — {len(t)} صف</h3><p><a href="/download?f={_h.escape(f)}">تنزيل الملف</a></p>'
+                    f'<div style="overflow-x:auto">{tbl}</div></body></html>').encode("utf-8")
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.end_headers(); self.wfile.write(body); return
         if self.path.startswith("/download"):
             from urllib.parse import parse_qs, urlparse
             f = parse_qs(urlparse(self.path).query).get("f", [""])[0]
-            if f in ("chain_signals.csv", "chain_summary.csv", "hourly_results.csv", "rule_2026.csv", "rule_summary.csv",
+            if f.endswith(".csv") and "/" not in f and "\\" not in f and not f.startswith("prices"):
+                f = D(f)
+            if os.path.basename(f) in ("chain_signals.csv", "chain_summary.csv", "hourly_results.csv", "rule_2026.csv", "rule_summary.csv",
                      "ideas_A_2026.csv", "ideas_B_2026.csv", "ideas_all.csv", "ideas_summary.csv") and os.path.exists(f):
                 body = open(f, "rb").read()
                 self.send_response(200); self.send_header("Content-Type", "text/csv; charset=utf-8")
-                self.send_header("Content-Disposition", f'attachment; filename="{f}"'); self.end_headers(); self.wfile.write(body); return
+                self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(f)}"'); self.end_headers(); self.wfile.write(body); return
             self.send_response(404); self.end_headers(); return
         if self.path.startswith("/hourly-run"):
             run_hourly(offline="offline" in self.path and os.path.exists(D("prices_1h.csv")))

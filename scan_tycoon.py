@@ -17,7 +17,10 @@ NAMES = {'chg': 'التغير %', 'rng': 'المدى %', 'volx': 'الحجم ÷ 
 
 def norm(d):
     d = d.copy(); d.columns = [c.lower() for c in d.columns]
+    if 'ticker' in d and 'symbol' in d:
+        d = d.drop(columns='symbol')
     d = d.rename(columns={'symbol': 'ticker', 'datetime': 'date'})
+    d = d.loc[:, ~d.columns.duplicated()]
     d['ticker'] = d.ticker.astype(str).str.upper().str.replace('.CA', '', regex=False).str.split(':').str[-1]
     d['date'] = pd.to_datetime(d.date).dt.normalize()
     for k in ('open', 'high', 'low', 'close', 'volume'):
@@ -49,7 +52,7 @@ def fetch_tv(tickers, bars=200):
             try:
                 x = tv.get_hist(symbol=s, exchange='EGX', interval=Interval.in_daily, n_bars=bars)
                 if x is not None and len(x):
-                    x = x.reset_index(); x['ticker'] = s; parts.append(x); break
+                    x = x.reset_index().drop(columns='symbol', errors='ignore'); x['ticker'] = s; parts.append(x); break
             except Exception:
                 time.sleep(1)
         if i % 25 == 0:
@@ -76,7 +79,11 @@ def main():
     mk = norm(pd.read_csv(a.csv))
     if a.tv:
         print(f'refreshing {mk.ticker.nunique()} stocks from TradingView ...', flush=True)
-        mk = fetch_tv(sorted(mk.ticker.unique()))
+        cache = out / 'tv_market.csv'
+        if cache.exists() and time.time() - cache.stat().st_mtime < 6 * 3600:
+            mk = norm(pd.read_csv(cache)); print('  using saved download', cache)
+        else:
+            mk = fetch_tv(sorted(mk.ticker.unique())); mk.to_csv(cache, index=False)
     last_day = mk.date.max()
     print(f'market data: {mk.ticker.nunique()} stocks, last day {last_day.date()}', flush=True)
 
